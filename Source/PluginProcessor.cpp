@@ -1,4 +1,3 @@
-// Source/PluginProcessor.cpp
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <cmath>
@@ -42,11 +41,23 @@ bool ZClipAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) con
     return same && okOut;
 }
 
-static inline float saturateTanh(float x, float ceiling, float driveLin)
+static inline float softClipRounded(float x, float ceiling, float softness, float driveLin)
 {
     const float c = jmax(1.0e-6f, ceiling);
-    const float n = (x * driveLin) / c;
-    return c * std::tanh(n);
+    const float s = jlimit(0.0f, 1.0f, softness);
+    const float w = 0.6f * s;
+    const float t = c * (1.0f - w);
+
+    const float u = x * driveLin;
+    const float a = std::abs(u);
+    const float sg = (u < 0.0f) ? -1.0f : 1.0f;
+
+    if (a <= t) return u;
+    if (a >= c) return sg * c;
+
+    const float v = (a - t) / (c - t);
+    const float H = (-v*v*v + v*v + v);
+    return sg * (t + (c - t) * H);
 }
 
 void ZClipAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer&)
@@ -80,11 +91,12 @@ void ZClipAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer&)
     const float driveLin =          dbToLin(driveDb);
 
     const float makeup = autoMk ? (1.0f / std::sqrt(jmax(ceilLin, 1.0e-6f))) : 1.0f;
-    const bool useSaturation = (driveDb > 0.0f); // Drive=0 → hard clip
 
     dsp::AudioBlock<float> block(buffer);
     int clippedCount = 0, considered = 0;
     const int osFactor = 1 << currentOSChoice;
+	
+	const float softness = apvts.getRawParameterValue("shape")->load();
 
     auto processSample = [&](float x, float dry, int ch)->float
     {
@@ -109,9 +121,8 @@ void ZClipAudioProcessor::processBlock(AudioBuffer<float>& buffer, MidiBuffer&)
             x *= (1.0f + comp);
         }
 
-        const float y = useSaturation ? saturateTanh(x, ceilLin, driveLin)
-                                      : jlimit(-ceilLin, ceilLin, x);
-
+		const float y = softClipRounded(x, ceilLin, softness, driveLin);
+		
         float m = mix * y + (1.0f - mix) * dry;
         considered++;
         if (std::abs(m) > ceilLin) clippedCount++;
@@ -222,14 +233,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZClipAudioProcessor::createL
 {
     std::vector<std::unique_ptr<RangedAudioParameter>> p;
 
-    // Mode removed
     p.push_back(std::make_unique<AudioParameterFloat>("pregain","PreGain",NormalisableRange<float>(-24.0f,24.0f,0.01f),0.0f));
     p.push_back(std::make_unique<AudioParameterFloat>("ceiling","Ceiling",NormalisableRange<float>(-18.0f,0.0f,0.01f),0.0f));
     p.push_back(std::make_unique<AudioParameterBool>("automakeup","AutoMakeup",true));
 
-    p.push_back(std::make_unique<AudioParameterBool>("up_enable","UpwardEnable",false));
-    p.push_back(std::make_unique<AudioParameterFloat>("up_amount","UpwardAmount",NormalisableRange<float>(0.0f,6.0f,0.01f),0.0f));
-    p.push_back(std::make_unique<AudioParameterFloat>("up_knee","UpwardKnee",NormalisableRange<float>(0.0f,12.0f,0.01f),6.0f));
+    p.push_back(std::make_unique<AudioParameterBool>("up_enable","Upward Compression",false));
+	p.push_back(std::make_unique<AudioParameterFloat>("up_amount","Upward Gain (dB)",NormalisableRange<float>(0.0f,6.0f,0.01f),0.0f));
+	p.push_back(std::make_unique<AudioParameterFloat>("up_knee","Upward Knee (dB)",NormalisableRange<float>(0.0f,12.0f,0.01f),6.0f));
+
 
     p.push_back(std::make_unique<AudioParameterFloat>("mix","Mix",NormalisableRange<float>(0.0f,100.0f,0.01f),100.0f));
     p.push_back(std::make_unique<AudioParameterFloat>("output","Output",NormalisableRange<float>(-24.0f,24.0f,0.01f),0.0f));
@@ -238,6 +249,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout ZClipAudioProcessor::createL
     p.push_back(std::make_unique<AudioParameterBool>("isp","TruePeakProtect",true));
 
     p.push_back(std::make_unique<AudioParameterFloat>("drive","Drive",NormalisableRange<float>(0.0f,12.0f,0.01f),0.0f));
+	
+	p.push_back(std::make_unique<AudioParameterFloat>("shape","Shape", NormalisableRange<float>(0.0f,1.0f,0.001f), 0.0f));
+
 
     return { p.begin(), p.end() };
 }
