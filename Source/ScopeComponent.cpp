@@ -1,4 +1,3 @@
-// Source/ScopeComponent.cpp
 #include "ScopeComponent.h"
 using namespace juce;
 
@@ -56,14 +55,12 @@ void ScopeComponent::paint(juce::Graphics& g)
     drawChan(0, leftPath);
     drawChan(1, rightPath);
 
-    // ceiling line: WHITE
     float ceilDb = getCeiling ? getCeiling() : 0.0f;
     ceilDb = jlimit(-24.0f, 0.0f, ceilDb);
     const float yCeil = midY - Decibels::decibelsToGain(ceilDb) * (h * 0.40f);
     g.setColour(Colours::white.withAlpha(0.95f));
     g.drawLine((float) bounds.getX(), yCeil, (float) bounds.getRight(), yCeil, 2.0f);
 
-    // waveform: yellow
     auto waveCol = Colour::fromRGB(255, 216, 0);
     g.setColour(waveCol.withAlpha(0.25f));
     g.strokePath(leftPath,  PathStrokeType(6.0f, PathStrokeType::beveled, PathStrokeType::rounded));
