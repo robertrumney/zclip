@@ -14,6 +14,7 @@ static void styleKnob(Slider& s)
     s.setColour(Slider::trackColourId,            brandYellow().withAlpha(0.35f));
     s.setColour(Slider::backgroundColourId,       Colours::black.withAlpha(0.4f));
 }
+
 static void label(Label& L, const String& t)
 {
     L.setText(t, dontSendNotification);
@@ -31,23 +32,28 @@ ZClipAudioProcessorEditor::ZClipAudioProcessorEditor(ZClipAudioProcessor& proc)
 
     os.addItemList(StringArray{ "1x", "2x", "4x", "8x" }, 1);
 
-    styleKnob(pregain); styleKnob(ceiling); styleKnob(drive);
+    styleKnob(pregain); styleKnob(ceiling); styleKnob(drive); styleKnob(softness);
     styleKnob(upAmount); styleKnob(upKnee); styleKnob(mix); styleKnob(output);
 
     pregain.setRange(-24.0, 24.0, 0.01);
     ceiling.setRange(-18.0, 0.0, 0.01);
     drive.setRange(0.0, 12.0, 0.01);
+    softness.setRange(0.0, 1.0, 0.001);
     upAmount.setRange(0.0, 6.0, 0.01);
     upKnee.setRange(0.0, 12.0, 0.01);
     mix.setRange(0.0, 100.0, 0.01);
     output.setRange(-24.0, 24.0, 0.01);
 
     label(lOS, "Oversampling");
-    label(lPre, "PreGain");     label(lCeil, "Ceiling (dB)");
-    label(lDrive, "Drive");     label(lUpEn, "UpwardEnable");
-    label(lUpAmt, "UpwardAmount");
-    label(lUpKnee, "UpwardKnee");
-    label(lMix, "Mix (%)");     label(lOut, "Output");
+    label(lPre, "PreGain");
+    label(lCeil, "Ceiling (dB)");
+    label(lDrive, "Drive");
+    label(lSoft, "Shape");
+    label(lUpEn, "Upward Compression");
+    label(lUpAmt, "Upward Gain (dB)");
+    label(lUpKnee, "Upward Knee (dB)");
+    label(lMix, "Mix (%)");
+    label(lOut, "Output");
 
     addAndMakeVisible(lOS);   addAndMakeVisible(os);
 
@@ -55,13 +61,14 @@ ZClipAudioProcessorEditor::ZClipAudioProcessorEditor(ZClipAudioProcessor& proc)
     addAndMakeVisible(isp);
     addAndMakeVisible(upEnable);
 
-    addAndMakeVisible(lPre);   addAndMakeVisible(pregain);
-    addAndMakeVisible(lCeil);  addAndMakeVisible(ceiling);
-    addAndMakeVisible(lDrive); addAndMakeVisible(drive);
-    addAndMakeVisible(lUpAmt); addAndMakeVisible(upAmount);
-    addAndMakeVisible(lUpKnee);addAndMakeVisible(upKnee);
-    addAndMakeVisible(lMix);   addAndMakeVisible(mix);
-    addAndMakeVisible(lOut);   addAndMakeVisible(output);
+    addAndMakeVisible(lPre);    addAndMakeVisible(pregain);
+    addAndMakeVisible(lCeil);   addAndMakeVisible(ceiling);
+    addAndMakeVisible(lDrive);  addAndMakeVisible(drive);
+    addAndMakeVisible(lSoft);   addAndMakeVisible(softness);
+    addAndMakeVisible(lUpAmt);  addAndMakeVisible(upAmount);
+    addAndMakeVisible(lUpKnee); addAndMakeVisible(upKnee);
+    addAndMakeVisible(lMix);    addAndMakeVisible(mix);
+    addAndMakeVisible(lOut);    addAndMakeVisible(output);
 
     addAndMakeVisible(scope);
 
@@ -73,6 +80,7 @@ ZClipAudioProcessorEditor::ZClipAudioProcessorEditor(ZClipAudioProcessor& proc)
     aPre   = std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "pregain", pregain);
     aCeil  = std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "ceiling", ceiling);
     aDrive = std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "drive", drive);
+    aSoft  = std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "shape", softness);
     aUpAmt = std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "up_amount", upAmount);
     aUpKnee= std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "up_knee", upKnee);
     aMix   = std::make_unique<AudioProcessorValueTreeState::SliderAttachment>(p.apvts, "mix", mix);
@@ -104,13 +112,11 @@ void ZClipAudioProcessorEditor::resized()
 {
     auto r = getLocalBounds().reduced(24);
 
-    // Oversampling centered on top
     auto top = r.removeFromTop(64);
     const int colW = 240;
     Rectangle<int> osRect(top.getCentreX() - colW/2, top.getY()+10, colW, 48);
     placeLabelAndCtrl(lOS, os, osRect);
 
-    // Toggles
     auto toggles = r.removeFromTop(32);
     automakeup.setBounds(toggles.removeFromLeft(170));
     toggles.removeFromLeft(12);
@@ -119,7 +125,6 @@ void ZClipAudioProcessorEditor::resized()
     upEnable.setBounds(toggles.removeFromLeft(200));
     r.removeFromTop(6);
 
-    // Scope
     const int scopeH = 200;
     const int scopeY = r.getY();
     r.removeFromTop(scopeH);
@@ -127,10 +132,9 @@ void ZClipAudioProcessorEditor::resized()
 
     r.removeFromTop(16);
 
-    // Knobs
     auto knobs = r.removeFromTop(230);
     const int gap = 14;
-    const int cols = 7;
+    const int cols = 8;
     const int colW2 = (knobs.getWidth() - gap * (cols - 1)) / cols;
 
     auto colX = [&](int i) { return knobs.getX() + i * (colW2 + gap); };
@@ -139,8 +143,9 @@ void ZClipAudioProcessorEditor::resized()
     placeLabelAndCtrl(lPre,    pregain,  slot(0));
     placeLabelAndCtrl(lCeil,   ceiling,  slot(1));
     placeLabelAndCtrl(lDrive,  drive,    slot(2));
-    placeLabelAndCtrl(lUpAmt,  upAmount, slot(3));
-    placeLabelAndCtrl(lUpKnee, upKnee,   slot(4));
-    placeLabelAndCtrl(lMix,    mix,      slot(5));
-    placeLabelAndCtrl(lOut,    output,   slot(6));
+    placeLabelAndCtrl(lSoft,   softness, slot(3));
+    placeLabelAndCtrl(lUpAmt,  upAmount, slot(4));
+    placeLabelAndCtrl(lUpKnee, upKnee,   slot(5));
+    placeLabelAndCtrl(lMix,    mix,      slot(6));
+    placeLabelAndCtrl(lOut,    output,   slot(7));
 }
