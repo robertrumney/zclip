@@ -1,4 +1,3 @@
-// Source/PluginEditor.h
 #pragma once
 #include <juce_gui_extra/juce_gui_extra.h>
 #include "PluginProcessor.h"
@@ -15,14 +14,14 @@ public:
 private:
     ZClipAudioProcessor& p;
 
-    juce::ComboBox os; // Mode removed
-    juce::ToggleButton automakeup{"AutoMakeup"}, isp{"TruePeakProtect"}, upEnable{"UpwardEnable"};
-    juce::Slider pregain, ceiling, drive, upAmount, upKnee, mix, output;
-    juce::Label  lOS, lPre, lCeil, lDrive, lUpEn, lUpAmt, lUpKnee, lMix, lOut;
+    juce::ComboBox os;
+    juce::ToggleButton automakeup{"AutoMakeup"}, isp{"TruePeakProtect"}, upEnable{"Upward Compression"};
+    juce::Slider pregain, ceiling, drive, softness, upAmount, upKnee, mix, output;
+    juce::Label  lOS, lPre, lCeil, lDrive, lSoft, lUpEn, lUpAmt, lUpKnee, lMix, lOut;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> aOS;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> aAM, aISP, aUpEn;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> aPre, aCeil, aDrive, aUpAmt, aUpKnee, aMix, aOut;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> aPre, aCeil, aDrive, aSoft, aUpAmt, aUpKnee, aMix, aOut;
 
     ScopeComponent scope;
 
